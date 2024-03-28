@@ -4,15 +4,29 @@ var osmIsArea = require('osm-is-area')
 var varint = require('varint')
 var sortMembers = require('./lib/sort.js')
 var tagPriorities = require('./lib/tagpriorities.json')
+var tagValueTypes = require('./lib/tag-value-types.js')
 
 var features = {}
 for (var i=0; i<featuresJSON.length; i++) {
   features[featuresJSON[i]] = i
 }
 
-module.exports = function (item, deps) {
+module.exports = function (item, deps, opts) {
   var type = features['place.other']
   var tags = Object.entries(item.tags)
+  // TODO this does not quite work yet, lets figure it out before considering it
+  var featureTypes = opts && opts.featureTypes
+  // COMMIT NOTE
+  // `includeAllTags` will pass through INT and FLOAT tag values and properly
+  // TODO
+  // consider what should happen for STRING values?
+  var includeAllTags = opts && opts.includeAllTags || false
+  if (Array.isArray(featureTypes)) {
+    features = {}
+    for (var i=0; i<featureTypes.length; i++) {
+      features[featureTypes[i]] = i
+    }
+  }
   if(tags.length !== 0){
     var arr = []
     var priorities = []
@@ -43,7 +57,8 @@ module.exports = function (item, deps) {
     var typeLen = varint.encodingLength(type)
     var idLen = varint.encodingLength(id)
     var labelLen = getLabelLen(item.tags)
-    var buf = Buffer.alloc(9 + typeLen + idLen + labelLen)
+    var tagLen = includeAllTags ? getTagLen(item.tags) : 0
+    var buf = Buffer.alloc(9 + typeLen + idLen + labelLen + tagLen)
     var offset = 0
     buf.writeUInt8(0x01, offset) 
     offset+=1
@@ -55,7 +70,8 @@ module.exports = function (item, deps) {
     offset+=4
     buf.writeFloatLE(item.lat, offset)
     offset+=4
-    writeLabelData(item.tags, buf, offset)
+    offset = writeLabelData(item.tags, buf, offset)
+    if (includeAllTags) writeTagData(item.tags, buf, offset)
   }
   if (item.type === 'way') {
     for (var i=0; i<item.refs.length; i++) {
@@ -82,7 +98,8 @@ module.exports = function (item, deps) {
         cSize+=varint.encodingLength(cells[i])
       }
       var labelLen = getLabelLen(item.tags)
-      var buf = Buffer.alloc(1 + typeLen + idLen + pCountLen + pCount*4*2 + cLen + cSize + labelLen)
+      var tagLen = includeAllTags ? getTagLen(item.tags) : 0
+      var buf = Buffer.alloc(1 + typeLen + idLen + pCountLen + pCount*4*2 + cLen + cSize + labelLen + tagLen)
       var offset = 0
       buf.writeUInt8(0x03, 0)
       offset+=1
@@ -102,7 +119,8 @@ module.exports = function (item, deps) {
         varint.encode(cells[i], buf, offset)
         offset+=varint.encode.bytes
       }
-      writeLabelData(item.tags, buf, offset)
+      offset = writeLabelData(item.tags, buf, offset)
+      offset = writeTagData(includeAllTags ? item.tags : [], buf, offset)
     }
     else if (item.refs.length > 1) {
       var typeLen = varint.encodingLength(type)
@@ -116,7 +134,8 @@ module.exports = function (item, deps) {
       var pCount = coords.length/2
       var pCountLen = varint.encodingLength(pCount)
       var labelLen = getLabelLen(item.tags)
-      var buf = Buffer.alloc(1 + typeLen + idLen + pCount*4*2 + pCountLen + labelLen)
+      var tagLen = includeAllTags ? getTagLen(item.tags) : 0
+      var buf = Buffer.alloc(1 + typeLen + idLen + pCount*4*2 + pCountLen + labelLen + tagLen)
       var offset = 0
       buf.writeUInt8(0x02, 0)
       offset+=1
@@ -130,7 +149,8 @@ module.exports = function (item, deps) {
         buf.writeFloatLE(coords[i], offset)
         offset+=4
       }
-      writeLabelData(item.tags, buf, offset)
+      offset = writeLabelData(item.tags, buf, offset)
+      offset = writeTagData(includeAllTags ? item.tags : [], buf, offset)
     }
     else {
       var buf = Buffer.alloc(0)
@@ -245,7 +265,8 @@ module.exports = function (item, deps) {
         cSize+=varint.encodingLength(cells[i])
       }
       var labelLen = getLabelLen(item.tags)
-      var buf = Buffer.alloc(1 + typeLen + idLen + pCountLen + pCount*4*2 + cLen + cSize + labelLen)
+      var tagLen = getTagLen(includeAllTags ? item.tags : [])
+      var buf = Buffer.alloc(1 + typeLen + idLen + pCountLen + pCount*4*2 + cLen + cSize + labelLen + tagLen)
       var offset = 0
       buf.writeUInt8(0x03, 0)
       offset+=1
@@ -265,7 +286,8 @@ module.exports = function (item, deps) {
         varint.encode(item, buf, offset)
         offset+=varint.encode.bytes
       })
-      writeLabelData(item.tags, buf, offset)
+      offset = writeLabelData(item.tags, buf, offset)
+      offset = writeTagData(includeAllTags ? item.tags : [], buf, offset)
     }
     else {
       var buf = Buffer.alloc(0)
@@ -274,11 +296,14 @@ module.exports = function (item, deps) {
   return buf
 }
 
+var nameRegEx = /^([^:]+_|)name($|:)/
+var nameReplaceRegEx = /^(|[^:]+_)name($|:)/
+
 function getLabelLen (tags) {
   var labelLen = 1
   Object.keys(tags).forEach(function (key) {
-    if (!/^([^:]+_|)name($|:)/.test(key)) { return }
-    var pre = key.replace(/^(|[^:]+_)name($|:)/,'')
+    if (!nameRegEx.test(key)) { return }
+    var pre = key.replace(nameReplaceRegEx,'')
     var dataLen = Buffer.byteLength(pre) + 1
       + Buffer.byteLength(tags[key]) 
     labelLen += varint.encodingLength(dataLen) + dataLen
@@ -288,8 +313,8 @@ function getLabelLen (tags) {
 
 function writeLabelData (tags, buf, offset) {
   Object.keys(tags).forEach(function (key) {
-    if (!/^([^:]+_|)name($|:)/.test(key)) { return }
-    var pre = key.replace(/^(|[^:]+_)name($|:)/,'')
+    if (!nameRegEx.test(key)) { return }
+    var pre = key.replace(nameReplaceRegEx,'')
     var dataLen = Buffer.byteLength(pre) + 1
       + Buffer.byteLength(tags[key])
     varint.encode(dataLen, buf, offset)
@@ -297,6 +322,86 @@ function writeLabelData (tags, buf, offset) {
     var data = pre + '=' + tags[key]
     buf.write(data, offset)
     offset+=Buffer.byteLength(data)
+  })
+  varint.encode(0, buf, offset)
+  offset+=varint.encode.bytes
+  return offset
+}
+
+function getTagLen (tags) {
+  var tagLen = 0 
+  Object.keys(tags).forEach(function (key) {
+    if (nameRegEx.test(key)) { return }
+    var tagKey = key
+    var tagValue = tags[key]
+    if (typeof tagValue === 'object' || Array.isArray(tagValue)) { return }
+    var tagValueType
+    var tagValueLen
+    if (Number.isInteger(tagValue)) {
+      tagValueType = tagValueTypes.INT
+      tagValueLen = varint.encodingLength(tagValue)
+    }
+    else if (isNaN(tagValue)) {
+      tagValueType = tagValueTypes.STRING
+      tagValueLen = varint.encodingLength(Buffer.byteLength(tagValue)) + Buffer.byteLength(tagValue)
+    }
+    else {
+      tagValueType = tagValueTypes.FLOAT
+      tagValueLen = 4
+    }
+    var dataLen = varint.encodingLength(Buffer.byteLength(tagKey)) + Buffer.byteLength(tagKey) +
+      varint.encodingLength(tagValueType) +
+      tagValueLen
+    tagLen += dataLen
+  })
+  // we end with a 0 to signal we are done reading tag data
+  tagLen += varint.encodingLength(0)
+  return tagLen
+}
+
+function writeTagData (tags, buf, offset) {
+  Object.keys(tags).forEach(function (key) {
+    if (nameRegEx.test(key)) { return }
+    var tagKey = key
+    var tagValue = tags[key]
+    if (typeof tagValue === 'object' || Array.isArray(tagValue)) { return }
+    var tagValueType
+    var tagValueLen
+    if (Number.isInteger(tagValue)) {
+      tagValueType = tagValueTypes.INT
+      tagValueLen = varint.encodingLength(tagValue)
+    }
+    else if (isNaN(tagValue)) {
+      tagValueType = tagValueTypes.STRING
+      tagValueLen = Buffer.byteLength(tagValue)
+    }
+    else {
+      tagValueType = tagValueTypes.FLOAT
+      tagValueLen = 4
+    }
+      
+    varint.encode(Buffer.byteLength(tagKey), buf, offset)
+    offset += varint.encode.bytes
+    buf.write(tagKey, offset)
+    offset += Buffer.byteLength(tagKey)
+
+    varint.encode(tagValueType, buf, offset)
+    offset += varint.encode.bytes
+
+    if (tagValueType === tagValueTypes.INT) {
+      varint.encode(tagValue, buf, offset)
+      offset += varint.encode.bytes
+    }
+    else if (tagValueType === tagValueTypes.FLOAT) {
+      buf.writeFloatLE(tagValue, offset)
+      offset += 4
+    }
+    else if (tagValueType === tagValueTypes.STRING) {
+      varint.encode(tagValueLen, buf, offset)
+      offset += varint.encode.bytes
+      buf.write(tagValue, offset)
+      offset += tagValueLen
+    }
   })
   varint.encode(0, buf, offset)
   offset+=varint.encode.bytes

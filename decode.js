@@ -1,6 +1,7 @@
 var getNormals = require('polyline-normals')
 var varint = require('varint')
 var getLoops = require('./lib/get-loops.js')
+var tagValueTypes = require('./lib/tag-value-types.js')
 
 module.exports = function (buffers) {
   var sizes = {
@@ -200,6 +201,7 @@ module.exports = function (buffers) {
       data.line.normals[offsets.line.normals++] = data.line.normals[normOffset-2]
       data.line.normals[offsets.line.normals++] = data.line.normals[normOffset-1]
       offset = decodeLabels(buf, offset, data.line, id)
+      offset = decodeTags(buf, offset, data.line, id)
     }
     else if (featureType === 3) {
       var type = varint.decode(buf, offset)
@@ -315,13 +317,50 @@ module.exports = function (buffers) {
 function decodeLabels (buf, offset, data, id) {
   do {
     var labelLength = varint.decode(buf, offset)
-    if (labelLength === 0) continue
     offset+=varint.decode.bytes
+    if (labelLength === 0) { continue }
     var labelData = buf.slice(offset, offset+labelLength)
     offset+=labelLength
     if (!data.labels[id]) data.labels[id] = []
     data.labels[id].push(labelData.toString())
   } while (labelLength > 0)
+  return offset
+}
+
+function decodeTags (buf, offset, data, id) {
+  do {
+    try {
+      var tagKeyLength = varint.decode(buf, offset)    
+    }
+    catch (error) {
+      return offset
+    }
+    
+    offset+=varint.decode.bytes
+    if (tagKeyLength === 0) { continue }
+    var tagKey = buf.slice(offset, offset + tagKeyLength).toString()
+    offset += tagKeyLength
+    var tagValueType = varint.decode(buf, offset)
+    offset+=varint.decode.bytes
+
+    var tagValue
+    if (tagValueType === tagValueTypes.INT) {
+      tagValue = parseInt(varint.decode(buf, offset).toString())
+      offset += varint.decode.bytes
+      if (!Array.isArray(data[tagKey])) data[tagKey] = new Array(data.types.length).fill(tagValue)
+    }
+    else if (tagValueType === tagValueTypes.FLOAT) {
+      tagValue = buf.readFloatLE(offset)
+      offset += 4
+      if (!Array.isArray(data[tagKey])) data[tagKey] = new Array(data.types.length).fill(tagValue)
+    }
+    else if (tagValueType === tagValueTypes.STRING) {
+      var tagValueLength = varint.decode(buf, offset)
+      offset += varint.decode.bytes
+      tagValue = buf.slice(offset, offset + tagValueLength)
+      offset += tagValueLength
+    }
+  } while (tagKeyLength > 0)
   return offset
 }
 
