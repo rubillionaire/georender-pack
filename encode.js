@@ -16,7 +16,7 @@ module.exports = function (item, deps, opts) {
   var tags = Object.entries(item.tags)
   // TODO this does not quite work yet, lets figure it out before considering it
   var featureTypes = opts && opts.featureTypes
-  var includeTags = opts && opts.includeAllTags
+  var includeTags = opts && (opts.includeAllTags === true || opts.includeTags === '*')
     ? '*'
     : opts && opts.includeTags && Array.isArray(opts.includeTags)
       ? opts.includeTags
