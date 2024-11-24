@@ -16,11 +16,12 @@ module.exports = function (item, deps, opts) {
   var tags = Object.entries(item.tags)
   // TODO this does not quite work yet, lets figure it out before considering it
   var featureTypes = opts && opts.featureTypes
-  // COMMIT NOTE
-  // `includeAllTags` will pass through INT and FLOAT tag values and properly
-  // TODO
-  // consider what should happen for STRING values?
-  var includeAllTags = opts && opts.includeAllTags || false
+  var includeTags = opts && opts.includeAllTags
+    ? '*'
+    : opts && opts.includeTags && Array.isArray(opts.includeTags)
+      ? opts.includeTags
+      : []
+
   if (Array.isArray(featureTypes)) {
     features = {}
     for (var i=0; i<featureTypes.length; i++) {
@@ -53,11 +54,19 @@ module.exports = function (item, deps, opts) {
   }
   var id = item.id
 
+  var includedTags = includeTags === '*'
+    ? item.tags
+    : tags.filter(t => includeTags.includes(t[0]))
+      .reduce((acc, curr) => {
+        acc[curr[0]] = curr[1]
+        return acc
+      }, {})
+
   if (item.type === 'node') {
     var typeLen = varint.encodingLength(type)
     var idLen = varint.encodingLength(id)
     var labelLen = getLabelLen(item.tags)
-    var tagLen = includeAllTags ? getTagLen(item.tags) : 0
+    var tagLen = getTagLen(includedTags)
     var buf = Buffer.alloc(9 + typeLen + idLen + labelLen + tagLen)
     var offset = 0
     buf.writeUInt8(0x01, offset) 
@@ -71,7 +80,7 @@ module.exports = function (item, deps, opts) {
     buf.writeFloatLE(item.lat, offset)
     offset+=4
     offset = writeLabelData(item.tags, buf, offset)
-    if (includeAllTags) writeTagData(item.tags, buf, offset)
+    offset = writeTagData(includedTags, buf, offset)
   }
   if (item.type === 'way') {
     for (var i=0; i<item.refs.length; i++) {
@@ -98,7 +107,7 @@ module.exports = function (item, deps, opts) {
         cSize+=varint.encodingLength(cells[i])
       }
       var labelLen = getLabelLen(item.tags)
-      var tagLen = includeAllTags ? getTagLen(item.tags) : 0
+      var tagLen = getTagLen(includedTags)
       var buf = Buffer.alloc(1 + typeLen + idLen + pCountLen + pCount*4*2 + cLen + cSize + labelLen + tagLen)
       var offset = 0
       buf.writeUInt8(0x03, 0)
@@ -120,7 +129,7 @@ module.exports = function (item, deps, opts) {
         offset+=varint.encode.bytes
       }
       offset = writeLabelData(item.tags, buf, offset)
-      offset = writeTagData(includeAllTags ? item.tags : [], buf, offset)
+      offset = writeTagData(includedTags, buf, offset)
     }
     else if (item.refs.length > 1) {
       var typeLen = varint.encodingLength(type)
@@ -134,7 +143,7 @@ module.exports = function (item, deps, opts) {
       var pCount = coords.length/2
       var pCountLen = varint.encodingLength(pCount)
       var labelLen = getLabelLen(item.tags)
-      var tagLen = includeAllTags ? getTagLen(item.tags) : 0
+      var tagLen = getTagLen(includedTags)
       var buf = Buffer.alloc(1 + typeLen + idLen + pCount*4*2 + pCountLen + labelLen + tagLen)
       var offset = 0
       buf.writeUInt8(0x02, 0)
@@ -150,7 +159,7 @@ module.exports = function (item, deps, opts) {
         offset+=4
       }
       offset = writeLabelData(item.tags, buf, offset)
-      offset = writeTagData(includeAllTags ? item.tags : [], buf, offset)
+      offset = writeTagData(includedTags, buf, offset)
     }
     else {
       var buf = Buffer.alloc(0)
@@ -265,7 +274,7 @@ module.exports = function (item, deps, opts) {
         cSize+=varint.encodingLength(cells[i])
       }
       var labelLen = getLabelLen(item.tags)
-      var tagLen = getTagLen(includeAllTags ? item.tags : [])
+      var tagLen = getTagLen(includedTags)
       var buf = Buffer.alloc(1 + typeLen + idLen + pCountLen + pCount*4*2 + cLen + cSize + labelLen + tagLen)
       var offset = 0
       buf.writeUInt8(0x03, 0)
@@ -287,7 +296,7 @@ module.exports = function (item, deps, opts) {
         offset+=varint.encode.bytes
       })
       offset = writeLabelData(item.tags, buf, offset)
-      offset = writeTagData(includeAllTags ? item.tags : [], buf, offset)
+      offset = writeTagData(includedTags, buf, offset)
     }
     else {
       var buf = Buffer.alloc(0)
@@ -385,9 +394,8 @@ function writeTagData (tags, buf, offset) {
     buf.write(tagKey, offset)
     offset += Buffer.byteLength(tagKey)
 
-    varint.encode(tagValueType, buf, offset)
-    offset += varint.encode.bytes
-
+    buf.writeUInt8(tagValueType, offset)
+    offset += 1
     if (tagValueType === tagValueTypes.INT) {
       varint.encode(tagValue, buf, offset)
       offset += varint.encode.bytes

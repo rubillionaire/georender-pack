@@ -18,6 +18,7 @@ the VARINT encoding is a single byte. Learn more at https://www.npmjs.com/packag
 | F32           | position lon                |
 | F32           | position lat                |
 | LABEL[...]    | labels                      |
+| TAGS[...]    | tags                      |
 
 
 # FEATURE: LINE
@@ -30,6 +31,7 @@ the VARINT encoding is a single byte. Learn more at https://www.npmjs.com/packag
 | VARINT           | p_count (# of positions) |
 | POSITION[p_count]| positions                |
 | LABEL[...]       | labels                   |
+| TAGS[...]    | tags                      |
 
 
 # FEATURE: AREA
@@ -44,6 +46,7 @@ the VARINT encoding is a single byte. Learn more at https://www.npmjs.com/packag
 | VARINT           | c_count (# of cells)     |
 | CELL[c_count]    | cells                    |
 | LABEL[...]       | labels                   |
+| TAGS[...]    | tags                      |
 
 Areas represent polygon shapes.
 
@@ -72,6 +75,7 @@ when clipping large geometries), use `AREA_WITH_EDGES` below.
 | VARINT                | e_count (# of edge_indexes)  |
 | EDGE_INDEX[e_count]   | edge_indexes                 |
 | LABEL[...]            | labels                       |
+| TAGS[...]    | tags                      |
 
 This variation of areas gives you explicit control over edges.
 
@@ -213,3 +217,14 @@ the packed label data would be:
 ```
 
 please also see https://wiki.openstreetmap.org/wiki/Key:name and https://wiki.openstreetmap.org/wiki/Multilingual_names
+
+# TAGS
+
+| Type [Value] | Description                  |
+|--------------|------------------------------|
+|  VARINT      | tag name string length                       |
+|  U8 [0x01 | 0x02 | 0x03]        | tag value type                         |
+|  VARINT        | tag value                         |
+
+for a single item, there may be multiple tags. each tag has a name string length, value type, and finally a value. these are written serially and the list of tags ends with a tag
+of length zero. Tags values can be INT | FLOAT | STRING.
