@@ -1,6 +1,14 @@
 var getNormals = require('polyline-normals')
 var varint = require('varint')
 var getLoops = require('./lib/get-loops.js')
+var tagValueTypes = require('./lib/tag-value-types.js')
+
+var baseFields = {
+  point: ['types', 'ids', 'positions', 'labels'],
+  line: ['types', 'ids', 'positions', 'normals', 'labels'],
+  area: ['types', 'ids', 'positions', 'cells', 'labels'],
+  areaBorder: ['types', 'ids', 'positions', 'normals'],
+}
 
 module.exports = function (buffers) {
   var sizes = {
@@ -149,6 +157,7 @@ module.exports = function (buffers) {
       data.point.positions[offsets.point.positions++] = buf.readFloatLE(offset)
       offset+=4
       offset = decodeLabels(buf, offset, data.point, id)
+      offset = decodeTags(buf, offset, data.point, id)
     }
     else if (featureType === 2) {
       var type = varint.decode(buf, offset)
@@ -200,6 +209,7 @@ module.exports = function (buffers) {
       data.line.normals[offsets.line.normals++] = data.line.normals[normOffset-2]
       data.line.normals[offsets.line.normals++] = data.line.normals[normOffset-1]
       offset = decodeLabels(buf, offset, data.line, id)
+      offset = decodeTags(buf, offset, data.line, id)
     }
     else if (featureType === 3) {
       var type = varint.decode(buf, offset)
@@ -244,6 +254,7 @@ module.exports = function (buffers) {
       }
       pindex+=plen
       offset = decodeLabels(buf, offset, data.area, id)
+      offset = decodeTags(buf, offset, data.area, id)
     }
     else if (featureType === 4) {
       var type = varint.decode(buf, offset)
@@ -302,6 +313,7 @@ module.exports = function (buffers) {
       addAreaBorderPositions(data, offsets, positions, id, type, false)
       pindex+=plen
       offset = decodeLabels(buf, offset, data.area, id)
+      offset = decodeTags(buf, offset, data.area, id)
     }
   }
   if (offsets.areaBorder.types !== data.areaBorder.types.length) {
@@ -309,19 +321,60 @@ module.exports = function (buffers) {
     data.areaBorder.positions = data.areaBorder.positions.subarray(0, offsets.areaBorder.positions)
     data.areaBorder.normals = data.areaBorder.normals.subarray(0, offsets.areaBorder.normals)
   }
+  // spread tags from data.area to data.areaBorders
+  for (const field in data.areaBorder) {
+    if (baseFields.areaBorder.includes(field)) continue
+    data.areaBorder[field] = data.area[field].subarray(0, data.area[field].length)
+  }
   return data
 }
 
 function decodeLabels (buf, offset, data, id) {
   do {
     var labelLength = varint.decode(buf, offset)
-    if (labelLength === 0) continue
     offset+=varint.decode.bytes
+    if (labelLength === 0) { continue }
     var labelData = buf.slice(offset, offset+labelLength)
     offset+=labelLength
     if (!data.labels[id]) data.labels[id] = []
     data.labels[id].push(labelData.toString())
   } while (labelLength > 0)
+  return offset
+}
+
+function decodeTags (buf, offset, data, id) {
+  do {
+    try {
+      var tagKeyLength = varint.decode(buf, offset)    
+    }
+    catch (error) {
+      return offset
+    }
+    
+    offset+=varint.decode.bytes
+    if (tagKeyLength === 0) { continue }
+    var tagKey = buf.slice(offset, offset + tagKeyLength).toString()
+    offset += tagKeyLength
+    var tagValueType = buf.readUInt8(offset)
+    offset += 1
+
+    var tagValue
+    if (tagValueType === tagValueTypes.INT) {
+      tagValue = parseInt(varint.decode(buf, offset).toString())
+      offset += varint.decode.bytes
+    }
+    else if (tagValueType === tagValueTypes.FLOAT) {
+      tagValue = buf.readFloatLE(offset)
+      offset += 4
+    }
+    else if (tagValueType === tagValueTypes.STRING) {
+      var tagValueLength = varint.decode(buf, offset)
+      offset += varint.decode.bytes
+      tagValue = buf.slice(offset, offset + tagValueLength).toString()
+      offset += tagValueLength
+    }
+    if (!Array.isArray(data[tagKey])) data[tagKey] = new Array(data.types.length).fill(tagValue)
+  } while (tagKeyLength > 0)
   return offset
 }
 

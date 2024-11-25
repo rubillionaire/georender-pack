@@ -1,11 +1,11 @@
-# georender-pack
+# @rubenrodriguez/georender-pack
 
 pack osm data into a buffer based on the [georender schema][].
 also includes code to unpack buffers in the above schema.
 
 this is part of the [peermaps](https://github.com/peermaps/) pipeline.
 
-[georender schema]: https://github.com/peermaps/docs/blob/master/georender.md
+[georender schema]: ./schema.md
 
 # example
 
@@ -94,7 +94,7 @@ or you can load just the method that you need:
 
 `var decode = require('georender-pack/decode')`
 
-## encode(item[, itemDependencies])
+## encode(item[, itemDependencies], opts)
 
 input is a single osm entry for a node, way, or relation processed through
 [`osm-pbf-parser`](https://www.npmjs.com/package/osm-pbf-parser). there is a
@@ -146,7 +146,7 @@ here's an example of what an array of label strings might look like:
 
 # installation
 
-in your terminal, run `npm install georender-pack`.
+in your terminal, run `npm install @rubenrodriguez/georender-pack`.
 
 
 # license
