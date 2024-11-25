@@ -223,7 +223,7 @@ please also see https://wiki.openstreetmap.org/wiki/Key:name and https://wiki.op
 | Type [Value] | Description                  |
 |--------------|------------------------------|
 |  VARINT      | tag name string length                       |
-|  U8 [0x01 | 0x02 | 0x03]        | tag value type                         |
+|  U8      | tag value type                         |
 |  VARINT        | tag value                         |
 
 for a single item, there may be multiple tags. each tag has a name string length, value type, and finally a value. these are written serially and the list of tags ends with a tag
