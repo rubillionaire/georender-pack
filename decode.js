@@ -10,7 +10,10 @@ var baseFields = {
   areaBorder: ['types', 'ids', 'positions', 'normals'],
 }
 
-module.exports = function (buffers) {
+module.exports = decode
+module.exports.baseFields = baseFields
+
+function decode (buffers) {
   var sizes = {
     point: { types: 0, ids: 0, positions: 0 },
     line: { types: 0, ids: 0, positions: 0, normals: 0 },
