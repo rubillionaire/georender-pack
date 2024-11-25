@@ -15,19 +15,19 @@ module.exports = function (item, deps, opts) {
   var type = features['place.other']
   var tags = Object.entries(item.tags)
   // TODO this does not quite work yet, lets figure it out before considering it
-  var featureTypes = opts && opts.featureTypes
+  // var featureTypes = opts && opts.featureTypes
   var includeTags = opts && (opts.includeAllTags === true || opts.includeTags === '*')
     ? '*'
     : opts && opts.includeTags && Array.isArray(opts.includeTags)
       ? opts.includeTags
       : []
 
-  if (Array.isArray(featureTypes)) {
-    features = {}
-    for (var i=0; i<featureTypes.length; i++) {
-      features[featureTypes[i]] = i
-    }
-  }
+  // if (Array.isArray(featureTypes)) {
+  //   features = {}
+  //   for (var i=0; i<featureTypes.length; i++) {
+  //     features[featureTypes[i]] = i
+  //   }
+  // }
   if(tags.length !== 0){
     var arr = []
     var priorities = []
@@ -312,7 +312,9 @@ function getLabelLen (tags) {
   var labelLen = 1
   Object.keys(tags).forEach(function (key) {
     if (!nameRegEx.test(key)) { return }
-    var pre = key.replace(nameReplaceRegEx,'')
+    var pre = key.startsWith('alt_name:')
+      ? key.replace(nameReplaceRegEx,'alt:')
+      : key.replace(nameReplaceRegEx,'')
     var dataLen = Buffer.byteLength(pre) + 1
       + Buffer.byteLength(tags[key]) 
     labelLen += varint.encodingLength(dataLen) + dataLen
@@ -323,7 +325,9 @@ function getLabelLen (tags) {
 function writeLabelData (tags, buf, offset) {
   Object.keys(tags).forEach(function (key) {
     if (!nameRegEx.test(key)) { return }
-    var pre = key.replace(nameReplaceRegEx,'')
+    var pre = key.startsWith('alt_name:')
+      ? key.replace(nameReplaceRegEx,'alt:')
+      : key.replace(nameReplaceRegEx,'')
     var dataLen = Buffer.byteLength(pre) + 1
       + Buffer.byteLength(tags[key])
     varint.encode(dataLen, buf, offset)
