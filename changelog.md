@@ -1,3 +1,7 @@
+# next
+
+- [test] add a test for labels being decoded properly in the include-tags suite of tests
+
 # 5.1.0
 
 - [encode] minor: preserve `alt_name:{lang}` as different from `name:{lang}`

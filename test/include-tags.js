@@ -126,6 +126,11 @@ var point = {
   lat: 10,
 }
 
+var point1 = Object.assign({}, point, { id: 6 })
+var point2 = Object.assign({}, point, { id: 7 })
+point1.tags.name = 'San Juan'
+point1.tags.name = 'Caguas'
+
 var line = {
   id: 6,
   type: 'way',
@@ -157,6 +162,14 @@ test('tags', function (t) {
   t.assert(tags.bufferDistance === pointDecoded.point.bufferDistance[0], 'point: matching float, bufferDistance')
   t.assert(tags.bufferIndex === pointDecoded.point.bufferIndex[0], 'point: matching int, bufferIndex')
   t.assert(tags.bufferName === pointDecoded.point.bufferName[0], 'point: matching string, bufferName')
+
+  var pointLabelsDecoded = decode([
+    encode(point1, []),
+    encode(point2, []),
+  ])
+
+  t.assert(pointLabelsDecoded.point.labels.hasOwnProperty(point1.id), `point: includes label for ${point1.id}`)
+  t.assert(pointLabelsDecoded.point.labels.hasOwnProperty(point2.id), `point: includes label for ${point2.id}`)
 
   t.end()
 })
